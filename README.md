@@ -72,4 +72,5 @@ y sync word (0x12 = LoRa privado, 0x34 = LoRaWAN).
 - Se sintoniza 500 kHz por debajo (`--fs`/4) para alejar el pico de DC.
 - Con LoRaWAN, el payload sale como bytes cifrados (MHDR, DevAddr, FCnt, ... MIC).
 
-El sketch del transmisor de prueba está en [`ttgo_lora_tx/`](ttgo_lora_tx/ttgo_lora_tx.ino).
+El sketch del transmisor está en [`GPS_LoRa_TTGO/`](GPS_LoRa_TTGO/GPS_LoRa_TTGO.ino): la TTGO lee un GPS NEO-6M
+(TinyGPSPlus), promedia 10 posiciones válidas (≥4 satélites, HDOP ≤ 3) y envía `lat,lon` por LoRa.

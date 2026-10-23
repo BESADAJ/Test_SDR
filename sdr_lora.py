@@ -12,7 +12,7 @@ Uso (antes cierra SDR++, solo un programa puede usar el dongle):
   # Sin --sf/--bw detecta automáticamente SF y BW con el primer paquete que oiga
   python sdr_lora.py --freq 915
 
-  # Fijando los parámetros (p. ej. los del sketch ttgo_lora_tx: BW 500 kHz, SF7)
+  # Fijando los parámetros (p. ej. los del sketch GPS_LoRa_TTGO: BW 500 kHz, SF7)
   python sdr_lora.py --freq 915 --sf 7 --bw 500
 
   # Desde una grabación baseband IQ (WAV de SDR++ o .npy complejo)
