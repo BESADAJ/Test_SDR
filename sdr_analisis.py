@@ -569,7 +569,11 @@ def main():
     for p in (v, f):
         p.add_argument("--deenfasis", type=float, default=75, help="µs: 75 (América) o 50 (Europa)")
 
-    a = ap.parse_args()
+    # Sin subcomando (p. ej. botón "Run" de VS Code) -> en vivo por defecto
+    argv = sys.argv[1:]
+    if not argv or argv[0] not in ("en_vivo", "archivo", "-h", "--help"):
+        argv = ["en_vivo"] + argv
+    a = ap.parse_args(argv)
     freq_hz = a.freq * 1e6
     carpeta = Path(__file__).parent / "resultados" / f"{dt.datetime.now():%Y%m%d_%H%M%S}_{a.modo}"
     carpeta.mkdir(parents=True, exist_ok=True)

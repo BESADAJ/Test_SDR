@@ -43,3 +43,33 @@ Opciones útiles:
 ```powershell
 .\venv\Scripts\python.exe generar_prueba.py
 ```
+
+---
+
+# Receptor LoRa (`sdr_lora.py`)
+
+Escucha continuamente con el RTL-SDR y decodifica los paquetes LoRa (capa física CSS, header
+explícito, como los envía la librería `LoRa.h` / SX127x). No guarda nada: imprime cada paquete
+hasta que pulses Ctrl+C.
+
+Por paquete muestra: texto y hex del payload, CRC, largo, coding rate, símbolos y tiempo al aire,
+bits corregidos por Hamming, SNR, potencia (dBFS), offset de frecuencia del transmisor (Hz/ppm)
+y sync word (0x12 = LoRa privado, 0x34 = LoRaWAN).
+
+```powershell
+# Autodetecta SF y BW con el primer paquete que oiga
+.\venv\Scripts\python.exe sdr_lora.py --freq 915
+
+# Parámetros fijos
+.\venv\Scripts\python.exe sdr_lora.py --freq 915 --sf 7 --bw 500
+
+# Desde una grabación baseband IQ (WAV de SDR++ o .npy)
+.\venv\Scripts\python.exe sdr_lora.py --archivo captura.wav --centro 914.5 --freq 915
+```
+
+- `--ganancia` (def. 10 dB): con la TTGO al lado del dongle el ADC satura incluso en 0 dB;
+  igual decodifica, pero el SNR mostrado es poco fiable. Súbela si el transmisor está lejos.
+- Se sintoniza 500 kHz por debajo (`--fs`/4) para alejar el pico de DC.
+- Con LoRaWAN, el payload sale como bytes cifrados (MHDR, DevAddr, FCnt, ... MIC).
+
+El sketch del transmisor de prueba está en [`ttgo_lora_tx/`](ttgo_lora_tx/ttgo_lora_tx.ino).
