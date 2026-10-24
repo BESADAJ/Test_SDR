@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Estación SDR · Rastreo GPS/LoRa</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%2324557F'/%3E%3Cpath d='M9 19a9 9 0 0 1 14 0M12 22a5 5 0 0 1 8 0' stroke='%23EFA324' stroke-width='2.4' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='16' cy='24.5' r='1.8' fill='%23EFA324'/%3E%3C/svg%3E">
+
+  <!-- Fuentes y Leaflet incluidos en web/vendor: la interfaz carga aunque no haya internet (solo el fondo del mapa lo necesita) -->
+  <link rel="stylesheet" href="vendor/fuentes/fuentes.css">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <header class="barra">
+    <div class="marca">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="15" class="marca-fondo"/><path d="M9 19a9 9 0 0 1 14 0M12 22a5 5 0 0 1 8 0" class="marca-ondas"/><circle cx="16" cy="24.5" r="1.8" class="marca-punto"/></svg>
+      <div>
+        <strong>Estación SDR</strong>
+        <span id="subtitulo">Rastreo vehicular GPS/LoRa</span>
+      </div>
+    </div>
+
+    <nav class="pestanas" role="tablist" aria-label="Vistas">
+      <button role="tab" id="tab-lora" aria-selected="true" aria-controls="vista-lora" data-vista="lora">Rastreo LoRa</button>
+      <button role="tab" id="tab-fm" aria-selected="false" aria-controls="vista-fm" data-vista="fm">Emisora FM</button>
+    </nav>
+
+    <div class="estado-barra">
+      <span class="chip-modo" id="chip-modo" data-modo="">Conectando…</span>
+      <span class="receptor-linea" id="receptor-linea">—</span>
+      <span class="lampara" id="lamp-servidor" data-estado="espera" title="Conexión con servidor_gps.py"><i></i>Servidor</span>
+      <span class="lampara" id="lamp-senal" data-estado="espera" title="Tiempo desde el último paquete"><i></i><span id="txt-senal">Sin paquetes</span></span>
+    </div>
+  </header>
+
+  <div class="aviso-conexion" id="aviso-conexion" hidden>
+    <p><strong>No hay conexión con el servidor.</strong>
+      Ejecuta <code>python servidor_gps.py</code> en la carpeta del proyecto y abre <code>http://localhost:8000</code>,
+      o mira cómo funciona con datos simulados.</p>
+    <div class="acciones">
+      <button class="btn btn-primario" id="btn-demo">Ver demostración</button>
+      <button class="btn" id="btn-reintentar">Reintentar conexión</button>
+    </div>
+  </div>
+
+  <!-- ======================= VISTA LoRa ======================= -->
+  <main id="vista-lora" class="vista vista-lora" role="tabpanel" aria-labelledby="tab-lora">
+
+    <div class="columna-principal">
+    <section class="zona-mapa" aria-label="Mapa">
+      <div id="map"></div>
+      <div class="mapa-herramientas" role="toolbar" aria-label="Herramientas del mapa">
+        <button class="herr" id="btn-seguir" aria-pressed="true" title="Mantener el vehículo en el centro">
+          <svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="3.2"/><path d="M10 1.5v3M10 15.5v3M1.5 10h3M15.5 10h3"/><circle cx="10" cy="10" r="6.5" fill="none"/></svg>Seguir</button>
+        <button class="herr" id="btn-ajustar" title="Mostrar todo el recorrido">
+          <svg viewBox="0 0 20 20"><path d="M2 7V2h5M13 2h5v5M18 13v5h-5M7 18H2v-5"/></svg>Recorrido</button>
+        <button class="herr" id="btn-base" aria-pressed="false" title="Haz clic en el mapa para ubicar la antena receptora">
+          <svg viewBox="0 0 20 20"><path d="M10 9v9M6 18h8M5.5 5.5a6.4 6.4 0 0 1 9 0M7.6 7.6a3.4 3.4 0 0 1 4.8 0"/><circle cx="10" cy="9" r="1.2"/></svg>Ubicar base</button>
+        <button class="herr" id="btn-borrar" title="Borrar el recorrido y los paquetes">
+          <svg viewBox="0 0 20 20"><path d="M4 6h12M8 6V3.5h4V6M5.5 6l.8 11h7.4l.8-11"/></svg>Borrar</button>
+      </div>
+      <div class="mapa-leyenda" aria-label="Leyenda de SNR">
+        <span>SNR del paquete</span>
+        <div class="leyenda-barra"></div>
+        <div class="leyenda-marcas"><span>−10</span><span>0</span><span>+10</span><span>+20 dB</span></div>
+      </div>
+      <div class="mapa-ayuda" id="mapa-ayuda" hidden>Haz clic donde está la antena del RTL-SDR. <button class="link" id="btn-geo">Usar mi ubicación</button> <button class="link" id="btn-base-cancelar">Cancelar</button></div>
+      <div class="mapa-vacio" id="mapa-vacio">
+        <p>Esperando la primera posición del GPS.</p>
+        <p class="tenue">La TTGO promedia 10 lecturas válidas (≥ 4 satélites, HDOP ≤ 3) antes de transmitir <code>lat,lon</code>.</p>
+      </div>
+    </section>
+
+
+
+    <section class="zona-senal" aria-label="Señal">
+      <div class="panel-pantalla">
+        <header class="panel-cab">
+          <h2>Cascada</h2>
+          <span class="tenue" id="casc-rango">—</span>
+          <label class="interruptor" title="Mantener el máximo de cada frecuencia en la traza del espectro"><input type="checkbox" id="chk-maxhold"> Retener máximo</label>
+        </header>
+        <div class="cascada" id="cascada">
+          <canvas id="cv-espectro" aria-label="Espectro instantáneo"></canvas>
+          <canvas id="cv-cascada" aria-label="Cascada del espectro en el tiempo"></canvas>
+          <div class="cascada-ejes" id="casc-ejes"></div>
+        </div>
+      </div>
+
+      <div class="panel-pantalla">
+        <header class="panel-cab">
+          <h2>Historia del enlace</h2>
+          <div class="segmentado" role="tablist" aria-label="Gráfica">
+            <button role="tab" aria-selected="true" data-graf="snr">SNR</button>
+            <button role="tab" aria-selected="false" data-graf="pot">Potencia</button>
+            <button role="tab" aria-selected="false" data-graf="cfo">Offset</button>
+            <button role="tab" aria-selected="false" data-graf="dist">SNR vs distancia</button>
+          </div>
+        </header>
+        <div class="grafica"><canvas id="cv-grafica" aria-label="Gráfica del enlace"></canvas><div class="tooltip" id="tooltip" hidden></div></div>
+        <p class="grafica-nota" id="grafica-nota"></p>
+      </div>
+    </section>
+
+    </div>
+
+    <aside class="rack" aria-label="Instrumentos">
+      <section class="modulo" aria-labelledby="h-pos">
+        <header class="modulo-cab">
+          <h2 id="h-pos">Posición</h2>
+          <span class="tenue" id="pos-edad">—</span>
+        </header>
+        <div class="coords">
+          <div><span class="coord-etq">Latitud</span><span class="coord-val" id="pos-lat">—</span></div>
+          <div><span class="coord-etq">Longitud</span><span class="coord-val" id="pos-lon">—</span></div>
+        </div>
+        <dl class="datos datos-2">
+          <div><dt>Distancia a la base</dt><dd id="pos-dist">—</dd></div>
+          <div><dt>Rumbo desde la base</dt><dd id="pos-rumbo">—</dd></div>
+          <div><dt>Velocidad</dt><dd id="pos-vel">—</dd></div>
+          <div><dt>Recorrido</dt><dd id="pos-recorrido">—</dd></div>
+        </dl>
+        <div class="fila-botones">
+          <button class="btn btn-chico" id="btn-copiar" disabled>Copiar coordenadas</button>
+          <a class="btn btn-chico" id="lnk-gmaps" target="_blank" rel="noopener" aria-disabled="true">Abrir en Google Maps</a>
+        </div>
+      </section>
+
+      <section class="modulo" aria-labelledby="h-enlace">
+        <header class="modulo-cab"><h2 id="h-enlace">Enlace</h2><span class="tenue" id="enlace-n">0 paquetes</span></header>
+        <div class="pantallas">
+          <div class="pantalla" id="pan-snr">
+            <span class="pan-etq">SNR</span>
+            <span class="pan-val"><b id="v-snr">—</b><small>dB</small></span>
+            <div class="medidor" aria-hidden="true"><i id="m-snr"></i><em class="umbral" id="umbral-snr" title="Límite de demodulación del SF actual"></em></div>
+            <span class="pan-pie" id="v-snr-pie">promedio —</span>
+          </div>
+          <div class="pantalla" id="pan-pot">
+            <span class="pan-etq">Potencia</span>
+            <span class="pan-val"><b id="v-pot">—</b><small>dBFS</small></span>
+            <div class="medidor" aria-hidden="true"><i id="m-pot"></i></div>
+            <span class="pan-pie" id="v-pot-pie">—</span>
+          </div>
+          <div class="pantalla" id="pan-cfo">
+            <span class="pan-etq">Offset del transmisor</span>
+            <span class="pan-val"><b id="v-cfo">—</b><small>Hz</small></span>
+            <span class="pan-pie" id="v-cfo-pie">— ppm</span>
+          </div>
+          <div class="pantalla" id="pan-crc">
+            <span class="pan-etq">CRC correcto</span>
+            <span class="pan-val"><b id="v-crc">—</b><small>%</small></span>
+            <div class="medidor" aria-hidden="true"><i id="m-crc"></i></div>
+            <span class="pan-pie" id="v-crc-pie">—</span>
+          </div>
+        </div>
+        <dl class="datos datos-2">
+          <div><dt>Paquetes por minuto</dt><dd id="v-ppm">—</dd></div>
+          <div><dt>Intervalo medio</dt><dd id="v-intervalo">—</dd></div>
+          <div><dt>Bits corregidos</dt><dd id="v-bits">—</dd></div>
+          <div><dt>Headers inválidos</dt><dd id="v-headers">—</dd></div>
+          <div><dt>Tiempo al aire</dt><dd id="v-toa">—</dd></div>
+          <div><dt>Ciclo de trabajo</dt><dd id="v-duty">—</dd></div>
+          <div><dt>Coding rate</dt><dd id="v-cr">—</dd></div>
+          <div><dt>Sync word</dt><dd id="v-sync">—</dd></div>
+        </dl>
+      </section>
+
+      <section class="modulo" aria-labelledby="h-rx">
+        <header class="modulo-cab"><h2 id="h-rx">Receptor</h2><span class="tenue" id="rx-fuente">—</span></header>
+        <dl class="datos datos-3">
+          <div><dt>Frecuencia</dt><dd id="rx-freq">—</dd></div>
+          <div><dt>Centro sintonizado</dt><dd id="rx-centro">—</dd></div>
+          <div><dt>Muestreo</dt><dd id="rx-fs">—</dd></div>
+          <div><dt>Spreading factor</dt><dd id="rx-sf">—</dd></div>
+          <div><dt>Ancho de banda</dt><dd id="rx-bw">—</dd></div>
+          <div><dt>Símbolo</dt><dd id="rx-sim">—</dd></div>
+          <div><dt>LDRO</dt><dd id="rx-ldro">—</dd></div>
+          <div><dt>Ganancia</dt><dd id="rx-gan">—</dd></div>
+          <div><dt>Corrección</dt><dd id="rx-ppm">—</dd></div>
+        </dl>
+        <div class="adc">
+          <span>Nivel del ADC</span>
+          <div class="medidor medidor-claro" aria-hidden="true"><i id="m-adc"></i></div>
+          <span id="v-adc">—</span>
+        </div>
+      </section>
+
+
+    </aside>
+
+    <section class="zona-registro" aria-label="Registro">
+      <header class="registro-cab">
+        <div class="segmentado segmentado-claro" role="tablist" aria-label="Registro">
+          <button role="tab" aria-selected="true" data-reg="paquetes">Paquetes <span class="cuenta" id="cuenta-pkt">0</span></button>
+          <button role="tab" aria-selected="false" data-reg="eventos">Eventos <span class="cuenta" id="cuenta-ev">0</span></button>
+        </div>
+        <div class="registro-filtros">
+          <input type="search" id="filtro" placeholder="Buscar en texto o hex" aria-label="Buscar paquetes">
+          <label class="interruptor"><input type="checkbox" id="chk-solo-ok"> Solo CRC correcto</label>
+        </div>
+        <div class="registro-export">
+          <span class="tenue">Exportar</span>
+          <button class="btn btn-chico" data-exportar="csv">CSV</button>
+          <button class="btn btn-chico" data-exportar="geojson">GeoJSON</button>
+          <button class="btn btn-chico" data-exportar="kml">KML</button>
+        </div>
+      </header>
+      <div class="tabla-envoltura" id="reg-paquetes">
+        <table class="tabla">
+          <thead><tr>
+            <th scope="col">#</th><th scope="col">Hora</th><th scope="col">Contenido</th><th scope="col">CRC</th>
+            <th scope="col" class="num">SNR dB</th><th scope="col" class="num">Potencia dBFS</th><th scope="col" class="num">Offset Hz</th>
+            <th scope="col" class="num">Bits corr.</th><th scope="col" class="num">Distancia</th><th scope="col" class="num">Aire ms</th>
+          </tr></thead>
+          <tbody id="tbody-pkt"></tbody>
+        </table>
+        <p class="tabla-vacia" id="tabla-vacia">Todavía no llega ningún paquete.</p>
+      </div>
+      <ol class="eventos" id="reg-eventos" hidden></ol>
+    </section>
+
+    <section class="modulo zona-inspector" aria-labelledby="h-pkt">
+        <header class="modulo-cab"><h2 id="h-pkt">Paquete</h2><button class="link" id="btn-seguir-ultimo" hidden>Volver al último</button></header>
+        <div id="inspector" class="inspector"><p class="tenue">Aquí aparece el contenido del último paquete, o del que elijas en el mapa o en el registro.</p></div>
+    </section>
+  </main>
+
+  <!-- ======================= VISTA FM ======================= -->
+  <main id="vista-fm" class="vista vista-fm" role="tabpanel" aria-labelledby="tab-fm" hidden>
+    <aside class="fm-lateral">
+      <section class="modulo">
+        <header class="modulo-cab"><h2>Capturar una emisora</h2></header>
+        <p class="tenue nota-modulo">Corre <code>sdr_analisis.py</code>. Mientras captura, el receptor LoRa suelta el dongle y luego lo retoma.</p>
+        <form id="form-captura" class="formulario">
+          <div class="campos-3">
+            <label>Frecuencia<span class="unidad-campo"><input type="number" name="freq" step="0.1" min="76" max="108" value="103.1" required><i>MHz</i></span></label>
+            <label>Duración<span class="unidad-campo"><input type="number" name="segundos" step="1" min="2" max="60" value="10" required><i>s</i></span></label>
+            <label>Ganancia<input type="text" name="ganancia" value="auto" inputmode="decimal"></label>
+          </div>
+          <button class="btn btn-primario" type="submit" id="btn-capturar">Capturar emisora</button>
+        </form>
+        <details class="detalles">
+          <summary>Analizar una grabación de SDR++</summary>
+          <form id="form-archivo" class="formulario">
+            <label>Ruta del WAV baseband<input type="text" name="ruta" placeholder="C:\grabaciones\baseband_102850000Hz_….wav" required></label>
+            <div class="campos-3">
+              <label>Emisora<span class="unidad-campo"><input type="number" name="freq" step="0.1" value="103.1" required><i>MHz</i></span></label>
+              <label>Centro<span class="unidad-campo"><input type="number" name="centro" step="0.001" placeholder="del nombre"><i>MHz</i></span></label>
+              <label>Segundos<span class="unidad-campo"><input type="number" name="segundos" value="15" min="0"><i>s</i></span></label>
+            </div>
+            <button class="btn" type="submit">Analizar grabación</button>
+          </form>
+        </details>
+        <pre class="consola" id="fm-consola" aria-live="polite" hidden></pre>
+      </section>
+
+      <section class="modulo">
+        <header class="modulo-cab"><h2>Reportes guardados</h2><button class="link" id="btn-fm-refrescar">Actualizar</button></header>
+        <ul class="lista-reportes" id="lista-reportes"><li class="tenue">Sin conexión con el servidor.</li></ul>
+        <div class="fila-botones">
+          <label class="btn btn-chico btn-archivo">Abrir reporte.json<input type="file" id="fm-archivos" accept=".json,.png,.wav,application/json,image/png,audio/wav" multiple></label>
+          <button class="btn btn-chico" id="btn-fm-ejemplo">Ver ejemplo</button>
+        </div>
+        <p class="tenue nota-modulo">Puedes elegir juntos <code>reporte.json</code>, <code>graficas.png</code> y <code>audio.wav</code> de una carpeta de <code>resultados/</code>.</p>
+      </section>
+    </aside>
+
+    <section class="fm-principal" id="fm-principal">
+      <div class="fm-vacio" id="fm-vacio">
+        <p>Elige un reporte de la lista, abre un <code>reporte.json</code> o captura una emisora.</p>
+      </div>
+      <div id="fm-contenido" hidden></div>
+    </section>
+  </main>
+
+  <div class="visor" id="visor" hidden><button class="visor-cerrar" aria-label="Cerrar">×</button><img alt=""></div>
+
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="js/util.js"></script>
+  <script src="js/graficas.js"></script>
+  <script src="js/mapa.js"></script>
+  <script src="js/demo.js"></script>
+  <script src="js/fm.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

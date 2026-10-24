@@ -349,18 +349,28 @@ class Receptor:
                 cfo += N / 2
             tau = ((fd - cfo + N / 2) % N) - N / 2
             ini = pk["ini"] + int(round(tau * OS))
-            # 3) con la rejilla alineada y la frecuencia corregida, ubicar el SFD exacto
-            x = self._x(ini, 16 * Ns)
-            if x is None:
-                return pk["ini"] + PREAMBULO_MIN * Ns
-            rot = np.exp(-2j * np.pi * cfo * np.arange(16 * N) / N).astype(np.complex64)
-            x = (x[::OS] * rot).reshape(16, N)
-            Xu = np.abs(L.fft_dechirp(x)) ** 2
-            Pd = (np.abs(L.fft_dechirp(x, bajada=True)) ** 2).max(1)
-            idx = np.flatnonzero(Pd > Xu.max(1))
-            if len(idx) == 0 or idx[0] < 2:
-                return pk["ini"] + PREAMBULO_MIN * Ns
-            m = int(idx[0])
+            # 3) con la rejilla alineada y la frecuencia corregida, ubicar el SFD exacto y refinar
+            #    tiempo/frecuencia con el preámbulo y el SFD ya alineados. En tasa normal (SF7 sin
+            #    LDRO) medio chip de error de tiempo basta para mover bins y romper el CRC.
+            for refino in range(3):
+                x = self._x(ini, 16 * Ns)
+                if x is None:
+                    return pk["ini"] + PREAMBULO_MIN * Ns
+                rot = np.exp(-2j * np.pi * cfo * np.arange(16 * N) / N).astype(np.complex64)
+                x = (x[::OS] * rot).reshape(16, N)
+                Xu = np.abs(L.fft_dechirp(x)) ** 2
+                Pd = (np.abs(L.fft_dechirp(x, bajada=True)) ** 2).max(1)
+                idx = np.flatnonzero(Pd > Xu.max(1))
+                if len(idx) == 0 or idx[0] < 2 or idx[0] + 1 >= 16:
+                    return pk["ini"] + PREAMBULO_MIN * Ns
+                m = int(idx[0])
+                if refino == 2:
+                    break
+                fu = float(np.median([L.pico_fino(x[j]) for j in range(max(0, m - 5), m - 2)]))
+                fd = L.pico_fino(x[m:m + 2], bajada=True)
+                d_tau = (fd - fu) / 2
+                ini += int(round(d_tau * OS))
+                cfo += (fu + fd) / 2
             pre = Xu[:max(1, m - 2)]
             pot_pico = pre.max(1)
             ruido = (pre.sum(1) - pot_pico) / (N - 1)
